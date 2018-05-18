@@ -2,10 +2,10 @@ import akka.Done;
 import akka.NotUsed;
 import akka.actor.ActorSystem;
 import akka.actor.Cancellable;
-import akka.japi.Pair;
 import akka.japi.function.Function;
 import akka.stream.*;
 import akka.stream.javadsl.*;
+import io.daydev.common.functional.Either;
 
 import java.time.Duration;
 import java.util.Collections;
@@ -41,8 +41,8 @@ public class Main {
           return task;
         });
     //Проверку делаем
-    final Flow<Task, Pair<Task, Boolean>, NotUsed> checkFlow = Flow.<Task>create()
-        .mapAsync(1, task -> CompletableFuture.supplyAsync(() -> Integer.parseInt(task.getName()) % 2 == 0).thenApply(result -> new Pair<>(task, result)));
+    final Flow<Task, Either<Task, Task>, NotUsed> checkFlow = Flow.<Task>create()
+        .mapAsync(1, task -> CompletableFuture.supplyAsync(() -> Integer.parseInt(task.getName()) % 2 == 0).thenApply(result -> result ? Either.left(task) : Either.right(task)));
 
     //Делаем работу
     final Flow<Task, Task, NotUsed> workFlow = Flow.<Task>create().map(task -> {
@@ -50,22 +50,21 @@ public class Main {
       return task;
     });
 
-    final Chooser<Pair<Task, Boolean>, Task> chooser = new Chooser<>(Pair::second, Pair::first);
+    final ChooserV2<Task, Task> chooser = new ChooserV2<>();
 
     //Делаем проверку, если не ок - логируемся и выходим, если ок - делаем работу, логируемся и выходим
     final Flow<Task, Task, NotUsed> flow = Flow.fromGraph(GraphDSL.create(
         b -> {
-          UniformFanOutShape<Pair<Task, Boolean>, Task> choose = b.add(chooser);
+          FanOutShape2<Either<Task, Task>, Task, Task> choose = b.add(chooser);
           final UniformFanInShape<Task, Task> merge = b.add(Merge.create(2));
-          final FlowShape<Task, Pair<Task, Boolean>> checker = b.add(checkFlow);
+          final FlowShape<Task, Either<Task, Task>> checker = b.add(checkFlow);
           final FlowShape<Task, Task> logger = b.add(finalFlow);
           final FlowShape<Task, Task> wFlow = b.add(workFlow);
 
-
           b.from(checker).toInlet(choose.in());
-          b.from(choose.out(0)).toInlet(wFlow.in());
+          b.from(choose.out0()).toInlet(wFlow.in());
           b.from(wFlow.out()).toInlet(merge.in(0));
-          b.from(choose.out(1)).toInlet(merge.in(1));
+          b.from(choose.out1()).toInlet(merge.in(1));
           b.from(merge.out()).toInlet(logger.in());
           return FlowShape.of(checker.in(), logger.out());
         }
