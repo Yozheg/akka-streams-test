@@ -1,4 +1,7 @@
-import akka.stream.*;
+import akka.stream.Attributes;
+import akka.stream.FanOutShape2;
+import akka.stream.Inlet;
+import akka.stream.Outlet;
 import akka.stream.stage.*;
 import io.daydev.common.functional.Either;
 
@@ -11,7 +14,7 @@ public class ChooserV2<A, B> extends GraphStage<FanOutShape2<Either<A, B>, A, B>
     private final FanOutShape2<Either<A, B>, A, B> shape = new FanOutShape2<>(in, out0, out1);
 
     @Override
-    public GraphStageLogic createLogic(Attributes inheritedAttributes) throws Exception {
+    public GraphStageLogic createLogic(Attributes inheritedAttributes) {
         return new GraphStageLogicWithLoggingAndHandlers<>(shape, in, out0, out1);
     }
 
@@ -37,7 +40,8 @@ public class ChooserV2<A, B> extends GraphStage<FanOutShape2<Either<A, B>, A, B>
             setHandler(out1, this);
         }
 
-        @Override
+
+      @Override
         public void preStart() throws Exception {
             super.preStart();
             log().info("Prestart ChooserV2");
