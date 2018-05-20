@@ -1,14 +1,18 @@
 import akka.Done;
 import akka.NotUsed;
+import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import akka.actor.Cancellable;
+import akka.japi.Pair;
 import akka.japi.function.Function;
 import akka.stream.*;
 import akka.stream.javadsl.*;
 import io.daydev.common.functional.Either;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicReference;
@@ -30,7 +34,8 @@ public class Main {
   private void run() {
     //demoCombine();
     // demo1();
-    demo3();
+    //demo3();
+    demoHub();
   }
 
   void demo3() {
@@ -99,7 +104,32 @@ public class Main {
     Source<String, Cancellable> srcUser = Source.tick(Duration.ofMillis(10), Duration.ofMillis(400), 0).map(nil -> "UserTask");
     //Выше - лучше
     int[] priorities = new int[]{1, 100};
-    Source.combine(source, srcUser, Collections.emptyList(), integer -> MergePrioritized.create(priorities)).to(Sink.foreach(System.out::println)).run(mat);
+    Source<String, NotUsed> combined = Source.combine(source, srcUser, Collections.emptyList(), integer -> MergePrioritized.create(priorities));
+    combined.to(Sink.foreach(System.out::println)).run(mat);
+
+  }
+  void demoHub(){
+
+    Source<Task, ActorRef> srcAr = Source.actorRef(10, OverflowStrategy.fail());
+    Pair<ActorRef, Source<Task, NotUsed>> actorRefPair = srcAr.preMaterialize(mat);
+    //Ссылку на актор запоминаем
+    ActorRef actor = actorRefPair.first();
+    //Ну и сразу зашлю в него таску:
+    actor.tell(new Task("Actor task"), ActorRef.noSender());
+    //Создаем мерджхаб
+    Source<Task, Sink<Task, NotUsed>> mergeHub = MergeHub.of(Task.class);
+    Pair<Sink<Task, NotUsed>, Source<Task, NotUsed>> pair = mergeHub.preMaterialize(mat);
+    //Мерджим прематериализованные сорцы
+    Source<Task, NotUsed> combined = Source.combine(actorRefPair.second(), pair.second(), new ArrayList<>(), integer->Merge.create(2));
+    //запускаем граф на хабе, но оставляем синк
+    combined.via(Flow.create()).to(Sink.foreach(task->System.out.println(task.getName()))).run(mat);
+
+    //Потом когда-то прилетает задача - нужно обработать N-объектов (например задача по-расписанию)
+    Source<Task, NotUsed> taskSource = Source.range(1, 10)
+        .map(String::valueOf)
+        .map(Task::new);
+    //И пускаем его в этот же граф
+    taskSource.runWith(pair.first(), mat);
 
   }
 
