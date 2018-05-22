@@ -12,7 +12,6 @@ import io.daydev.common.functional.Either;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicReference;
@@ -35,8 +34,21 @@ public class Main {
     //demoCombine();
     // demo1();
     //demo3();
-    demoHub();
+    // demoHub();
+    demoZip();
   }
+
+  public void demoThrottle() {
+
+  }
+
+
+  public void demoZip() {
+    Source<String, NotUsed> src = Source.range(1, 10).map(String::valueOf);
+    src.via(new Zipper<>(4)).to(Sink.foreach(list -> System.out.println(list)))
+        .run(mat);
+  }
+
 
   void demo3() {
     //Пишем лог
@@ -75,9 +87,14 @@ public class Main {
         }
     ));
 
+
     Source<Task, NotUsed> tasks = Source.range(1, 10).map(String::valueOf).map(Task::new);
     tasks.via(flow).to(Sink.ignore()).run(mat);
 
+  }
+
+  private CompletableFuture<String> send(String s) {
+    return null;
   }
 
   void demo1() {
