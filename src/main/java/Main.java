@@ -12,9 +12,13 @@ import io.daydev.common.functional.Either;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiFunction;
 
 public class Main {
 
@@ -35,10 +39,41 @@ public class Main {
     // demo1();
     //demo3();
     // demoHub();
-    demoZip();
+    //demoZip();
+    demoAsync();
   }
 
-  public void demoThrottle() {
+  public void demoAsync() {
+    Executor executor = Executors.newSingleThreadExecutor();
+    BiFunction<Integer, Integer, CompletionStage<List<Integer>>> func = (limit, offset) -> CompletableFuture.supplyAsync(() -> {
+      System.out.println("here");
+      try {
+        Thread.sleep(1000);
+      } catch (InterruptedException e) {
+        e.printStackTrace();
+      }
+      List<Integer> list = new ArrayList<>();
+      if (offset > 15) {
+        list.add(1);
+        return list;
+      }
+      for (int i = offset; i < limit + offset; i++) {
+        list.add(i);
+      }
+      return list;
+    }, executor);
+    BatchSource<Integer> bs = new BatchSource<>(func, 3);
+    Flow<List<Integer>, List<Integer>, NotUsed> flow = Flow.<List<Integer>>create()
+        //.buffer(1, OverflowStrategy.backpressure())
+        .mapAsync(1, (Function<List<Integer>, CompletionStage<List<Integer>>>) param -> CompletableFuture.supplyAsync(() -> {
+          try {
+            Thread.sleep(2000);
+          } catch (InterruptedException e) {
+            e.printStackTrace();
+          }
+          return param;
+        }));
+    flow.runWith(bs, Sink.foreach(System.out::println), mat);
 
   }
 
@@ -125,7 +160,8 @@ public class Main {
     combined.to(Sink.foreach(System.out::println)).run(mat);
 
   }
-  void demoHub(){
+
+  void demoHub() {
 
     Source<Task, ActorRef> srcAr = Source.actorRef(10, OverflowStrategy.fail());
     Pair<ActorRef, Source<Task, NotUsed>> actorRefPair = srcAr.preMaterialize(mat);
@@ -137,9 +173,9 @@ public class Main {
     Source<Task, Sink<Task, NotUsed>> mergeHub = MergeHub.of(Task.class);
     Pair<Sink<Task, NotUsed>, Source<Task, NotUsed>> pair = mergeHub.preMaterialize(mat);
     //Мерджим прематериализованные сорцы
-    Source<Task, NotUsed> combined = Source.combine(actorRefPair.second(), pair.second(), new ArrayList<>(), integer->Merge.create(2));
+    Source<Task, NotUsed> combined = Source.combine(actorRefPair.second(), pair.second(), new ArrayList<>(), integer -> Merge.create(2));
     //запускаем граф на хабе, но оставляем синк
-    combined.via(Flow.create()).to(Sink.foreach(task->System.out.println(task.getName()))).run(mat);
+    combined.via(Flow.create()).to(Sink.foreach(task -> System.out.println(task.getName()))).run(mat);
 
     //Потом когда-то прилетает задача - нужно обработать N-объектов (например задача по-расписанию)
     Source<Task, NotUsed> taskSource = Source.range(1, 10)

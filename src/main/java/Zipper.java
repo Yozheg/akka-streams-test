@@ -6,8 +6,8 @@ import java.util.List;
 
 public class Zipper<I> extends GraphStage<FlowShape<I, List<I>>> {
 
-  Inlet<I> in = Inlet.create("in");
-  Outlet<List<I>> out = Outlet.create("out");
+  private final Inlet<I> in = Inlet.create("in");
+  private final Outlet<List<I>> out = Outlet.create("out");
   private final Integer size;
 
   private final FlowShape<I, List<I>> shape = new FlowShape<>(in, out);
